@@ -1,19 +1,21 @@
-# Jabar 3 Web Release
+# Jabar 3 Monitoring Web
 
-## Login Admin
+Web dashboard Node.js untuk monitoring Jabar 3.
+
+## Sumber data terpisah
+1. **Data Penyaluran**: Excel `.xlsx/.xls` dengan kolom wajib `KABUPATEN, KECAMATAN, PRODUK, AAE, PUD, ALOKASI 1 TAHUN, TOTAL S` serta kolom bulanan.
+2. **Data Stok**: Excel `.xlsx/.xls` terpisah. Header utama: `KABUPATEN, GUDANG LINI III, PPTS, PUD`.
+
+## Admin
 - URL: `/admin`
-- Username: `admin`
-- Password default: `@Jabar3juara`
+- Default username: `admin`
+- Password: gunakan environment `ADMIN_PASS` (paket ini default `@Jabar3juara`, sebaiknya ganti untuk produksi).
 
-> Untuk hosting publik, sangat disarankan mengatur `ADMIN_PASS` dan `AUTH_SECRET` sebagai environment variable di server.
+## Environment
+`ADMIN_USER`, `ADMIN_PASS`, `AUTH_SECRET`, `PORT`.
 
-## Jalankan lokal
-```bash
-npm install
-npm start
-```
-Buka `http://localhost:3000/` untuk dashboard dan `http://localhost:3000/admin` untuk admin.
+## Run
+`npm install`
+`node server.js`
 
-## Upload Excel
-Gunakan `.xlsx` atau `.xls`. Sheet pertama harus memiliki header wajib:
-`KABUPATEN`, `KECAMATAN`, `PRODUK`, `AAE`, `PUD`, `ALOKASI 1 TAHUN`, `TOTAL S`.
+Render: Build Command `npm install`, Start Command `node server.js`.

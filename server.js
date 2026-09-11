@@ -10,25 +10,30 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASS || '@Jabar3juara';
 const AUTH_SECRET = process.env.AUTH_SECRET || 'Jabar3-auth-secret-change-this-before-production';
-const DATA_FILE = path.join(__dirname, 'data', 'data.json');
-const META_FILE = path.join(__dirname, 'data', 'meta.json');
-const REQUIRED = ['KABUPATEN','KECAMATAN','PRODUK','AAE','PUD','ALOKASI 1 TAHUN','TOTAL S'];
+const DATA_DIR = path.join(__dirname, 'data');
+const SALES_FILE = path.join(DATA_DIR, 'sales.json');
+const SALES_META = path.join(DATA_DIR, 'sales_meta.json');
+const STOCK_FILE = path.join(DATA_DIR, 'stock.json');
+const STOCK_META = path.join(DATA_DIR, 'stock_meta.json');
+const REQUIRED_SALES = ['KABUPATEN','KECAMATAN','PRODUK','AAE','PUD','ALOKASI 1 TAHUN','TOTAL S'];
+const REQUIRED_STOCK = ['KABUPATEN'];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 app.use(express.json({limit:'1mb'}));
 app.use(express.static(path.join(__dirname,'public')));
 
 function signToken(user){
-  const payload = `${user}.${Date.now() + 8*60*60*1000}`;
+  const exp = Date.now() + 8*60*60*1000;
+  const payload = `${user}.${exp}`;
   const sig = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('hex');
   return Buffer.from(`${payload}.${sig}`).toString('base64url');
 }
 function verifyToken(token){
   try{
-    const raw = Buffer.from(token,'base64url').toString();
-    const [user,exp,sig]=raw.split('.');
+    const raw=Buffer.from(token,'base64url').toString();
+    const parts=raw.split('.'); if(parts.length!==3) return false;
+    const [user,exp,sig]=parts;
     if(!user||!exp||!sig||Number(exp)<Date.now()) return false;
-    const payload=`${user}.${exp}`;
-    const expected=crypto.createHmac('sha256',AUTH_SECRET).update(payload).digest('hex');
+    const expected=crypto.createHmac('sha256',AUTH_SECRET).update(`${user}.${exp}`).digest('hex');
     return crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected));
   }catch{return false;}
 }
@@ -38,52 +43,38 @@ function auth(req,res,next){
   if(!verifyToken(token)) return res.status(401).json({error:'Unauthorized'});
   next();
 }
-function loadData(){
-  if(!fs.existsSync(DATA_FILE)) return [];
-  return JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
+function readJson(file,fallback){
+  try{return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):fallback;}catch{return fallback;}
 }
-function loadMeta(){
-  if(!fs.existsSync(META_FILE)) return {headers:[]};
-  return JSON.parse(fs.readFileSync(META_FILE,'utf8'));
-}
-function cleanHeader(v,i){
-  const base=(v===null||v===undefined||v==='')?`COL_${i}`:String(v).trim();
-  return base;
-}
-function parseWorkbook(buffer, originalName){
+function cleanHeader(v,i){return (v===null||v===undefined||v==='')?`COL_${i}`:String(v).trim();}
+function normalizeNumber(v){if(typeof v==='number') return v;if(v===null||v===undefined||v==='') return 0;return Number(String(v).replace(/[^\d.-]/g,''))||0;}
+function parseSheet(buffer, originalName, kind){
   const wb=XLSX.read(buffer,{type:'buffer',cellDates:true});
-  const first=wb.SheetNames[0];
-  const ws=wb.Sheets[first];
+  const first=wb.SheetNames[0]; const ws=wb.Sheets[first];
   const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
   if(!rows.length) throw new Error('File Excel kosong.');
   let headers=[]; const seen={};
-  rows[0].forEach((x,i)=>{let h=cleanHeader(x,i);seen[h]=(seen[h]||0)+1;headers.push(seen[h]>1?`${h}_${seen[h]}`:h)});
-  const missing=REQUIRED.filter(x=>!headers.includes(x));
+  rows[0].forEach((x,i)=>{const h=cleanHeader(x,i);seen[h]=(seen[h]||0)+1;headers.push(seen[h]>1?`${h}_${seen[h]}`:h);});
+  const required=kind==='sales'?REQUIRED_SALES:REQUIRED_STOCK;
+  const missing=required.filter(x=>!headers.includes(x));
   if(missing.length) throw new Error('Kolom wajib tidak ditemukan: '+missing.join(', '));
-  const records=rows.slice(1).filter(r=>r.some(v=>v!==null&&v!=='' )).map(r=>{
-    const o={}; headers.forEach((h,i)=>{const v=r[i]; o[h]=v instanceof Date?v.toISOString():v??null;}); return o;
-  });
-  const meta={sheet:first, originalName, updatedAt:new Date().toISOString(), rowCount:records.length, headers};
-  return {records,meta};
+  const records=rows.slice(1).filter(r=>r.some(v=>v!==null&&v!=='' )).map(r=>{const o={};headers.forEach((h,i)=>{const v=r[i];o[h]=v instanceof Date?v.toISOString():v??null;});return o;});
+  return {records,meta:{sheet:first,originalName,updatedAt:new Date().toISOString(),rowCount:records.length,headers,kind}};
 }
-app.get('/api/data',(req,res)=>res.json({data:loadData(),meta:loadMeta()}));
-app.post('/api/login',(req,res)=>{
-  const {username,password}=req.body||{};
-  if(username===ADMIN_USER && password===ADMIN_PASS) return res.json({token:signToken(username)});
-  res.status(401).json({error:'Username atau password salah'});
+function save(kind,parsed){
+  fs.mkdirSync(DATA_DIR,{recursive:true});
+  fs.writeFileSync(kind==='sales'?SALES_FILE:STOCK_FILE,JSON.stringify(parsed.records));
+  fs.writeFileSync(kind==='sales'?SALES_META:STOCK_META,JSON.stringify(parsed.meta,null,2));
+}
+app.get('/api/data',(req,res)=>{
+  res.json({
+    sales:{data:readJson(SALES_FILE,readJson(path.join(DATA_DIR,'data.json'),[])),meta:readJson(SALES_META,readJson(path.join(DATA_DIR,'meta.json'),{}))},
+    stock:{data:readJson(STOCK_FILE,[]),meta:readJson(STOCK_META,{})}
+  });
 });
-app.post('/api/upload',auth,upload.single('file'),(req,res)=>{
-  try{
-    if(!req.file) throw new Error('File belum dipilih.');
-    const ext=path.extname(req.file.originalname).toLowerCase();
-    if(!['.xlsx','.xls'].includes(ext)) throw new Error('Format harus .xlsx atau .xls.');
-    const parsed=parseWorkbook(req.file.buffer,req.file.originalname);
-    fs.mkdirSync(path.dirname(DATA_FILE),{recursive:true});
-    fs.writeFileSync(DATA_FILE,JSON.stringify(parsed.records));
-    fs.writeFileSync(META_FILE,JSON.stringify(parsed.meta,null,2));
-    res.json({ok:true,meta:parsed.meta});
-  }catch(e){res.status(400).json({error:e.message});}
-});
+app.post('/api/login',(req,res)=>{const {username,password}=req.body||{};if(username===ADMIN_USER&&password===ADMIN_PASS)return res.json({token:signToken(username)});res.status(401).json({error:'Username atau password salah'});});
+app.post('/api/upload/sales',auth,upload.single('file'),(req,res)=>{try{if(!req.file)throw new Error('File belum dipilih.');const ext=path.extname(req.file.originalname).toLowerCase();if(!['.xlsx','.xls'].includes(ext))throw new Error('Format harus .xlsx atau .xls.');const parsed=parseSheet(req.file.buffer,req.file.originalname,'sales');save('sales',parsed);res.json({ok:true,meta:parsed.meta});}catch(e){res.status(400).json({error:e.message});}});
+app.post('/api/upload/stock',auth,upload.single('file'),(req,res)=>{try{if(!req.file)throw new Error('File belum dipilih.');const ext=path.extname(req.file.originalname).toLowerCase();if(!['.xlsx','.xls'].includes(ext))throw new Error('Format harus .xlsx atau .xls.');const parsed=parseSheet(req.file.buffer,req.file.originalname,'stock');save('stock',parsed);res.json({ok:true,meta:parsed.meta});}catch(e){res.status(400).json({error:e.message});}});
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT,()=>console.log(`Jabar 3 running on :${PORT}`));
+app.listen(PORT,'0.0.0.0',()=>console.log(`Jabar 3 running on :${PORT}`));
