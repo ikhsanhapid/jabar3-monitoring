@@ -1,0 +1,10 @@
+{
+  "name": "jabar3-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard Monitoring Jabar 3 - public dashboard with Excel upload and admin login",
+  "main": "server.js",
+  "scripts": {"start": "node server.js"},
+  "engines": {"node": ">=20"},
+  "dependencies": {"express": "^4.21.2", "multer": "^1.4.5-lts.1", "xlsx": "^0.18.5"}
+}
