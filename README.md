@@ -1,21 +1,13 @@
-# Jabar 3 Monitoring Web
+# Jabar 3 Monitoring V8
 
-Web dashboard Node.js untuk monitoring Jabar 3.
+V8 menambahkan UI floating/glowing, KPI Kabupaten/Kecamatan/PUD, highlight realisasi tertinggi/terendah, dan 3 sumber Excel terpisah:
+- DATA PENYALURAN.xlsx
+- DATA STOK.xlsx
+- REALISASI_HARIAN.xlsx
 
-## Sumber data terpisah
-1. **Data Penyaluran**: Excel `.xlsx/.xls` dengan kolom wajib `KABUPATEN, KECAMATAN, PRODUK, AAE, PUD, ALOKASI 1 TAHUN, TOTAL S` serta kolom bulanan.
-2. **Data Stok**: Excel `.xlsx/.xls` terpisah. Header utama: `KABUPATEN, GUDANG LINI III, PPTS, PUD`.
+Upload admin ada di `/admin`.
 
-## Admin
-- URL: `/admin`
-- Default username: `admin`
-- Password: gunakan environment `ADMIN_PASS` (paket ini default `@Jabar3juara`, sebaiknya ganti untuk produksi).
-
-## Environment
-`ADMIN_USER`, `ADMIN_PASS`, `AUTH_SECRET`, `PORT`.
-
-## Run
-`npm install`
-`node server.js`
-
-Render: Build Command `npm install`, Start Command `node server.js`.
+Kolom wajib:
+- Penyaluran: KABUPATEN, KECAMATAN, PRODUK, AAE, PUD, ALOKASI 1 TAHUN, TOTAL S
+- Stok: KABUPATEN, GUDANG LINI III, PPTS, PUD
+- Realisasi Harian: TANGGAL, REALISASI
